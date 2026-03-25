@@ -222,7 +222,7 @@ async function main(): Promise<void> {
   }
 
   if (!(await health(config.url))) {
-    throw new Error("opencode server not running (use --serve to start it)");
+    throw new Error("opencode server not running — run 'ask --daemon' to start it in the background, or 'ask --serve' for foreground");
   }
 
   const sessionID = await createSession(config.url, "cli-ask");
