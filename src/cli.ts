@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdirSync, openSync } from "fs";
+import { mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { parseArgs, printHelp } from "./args.js";
 import { getConfig } from "./config.js";
 import { extractOneLine, extractText } from "./format.js";
@@ -13,10 +13,12 @@ async function runServer(host: string, port: number): Promise<number> {
   return await proc.exited;
 }
 
+const DATA_DIR = `${process.env.HOME}/.local/share/opencode-ask`;
+const PID_FILE = `${DATA_DIR}/server.pid`;
+
 function runDaemon(host: string, port: number): void {
-  const logDir = `${process.env.HOME}/.local/share/opencode-ask`;
-  const logPath = `${logDir}/server.log`;
-  mkdirSync(logDir, { recursive: true });
+  const logPath = `${DATA_DIR}/server.log`;
+  mkdirSync(DATA_DIR, { recursive: true });
   const fd = openSync(logPath, "a");
   const proc = Bun.spawn(["opencode", "serve", "--hostname", host, "--port", String(port)], {
     stdout: fd,
@@ -24,7 +26,27 @@ function runDaemon(host: string, port: number): void {
     detached: true,
   });
   proc.unref();
+  writeFileSync(PID_FILE, String(proc.pid));
   console.log(`opencode server started (pid ${proc.pid}), logging to ${logPath}`);
+}
+
+function stopDaemon(): void {
+  let pid: number;
+  try {
+    pid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
+  } catch {
+    console.error("no daemon pid file found — server may not be running");
+    process.exit(1);
+  }
+  try {
+    process.kill(pid, "SIGTERM");
+    unlinkSync(PID_FILE);
+    console.log(`opencode server stopped (pid ${pid})`);
+  } catch {
+    unlinkSync(PID_FILE);
+    console.error(`could not signal pid ${pid} — process may have already exited`);
+    process.exit(1);
+  }
 }
 
 function newMessageId(): string {
@@ -159,6 +181,10 @@ async function main(): Promise<void> {
   if (args.serve) {
     const code = await runServer(getConfig().host, getConfig().port);
     process.exit(code);
+  }
+  if (args.stop) {
+    stopDaemon();
+    return;
   }
   if (args.daemon) {
     const config = getConfig();

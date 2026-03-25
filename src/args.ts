@@ -7,6 +7,7 @@ export type CliArgs = {
   json: boolean;
   serve: boolean;
   daemon: boolean;
+  stop: boolean;
   stream: boolean;
   render: boolean;
   renderFinal: boolean;
@@ -24,6 +25,7 @@ export function parseArgs(argv: string[]): CliArgs {
   let json = false;
   let serve = false;
   let daemon = false;
+  let stop = false;
   let stream = true;
   let render = true;
   let renderFinal = false;
@@ -92,6 +94,10 @@ export function parseArgs(argv: string[]): CliArgs {
       daemon = true;
       continue;
     }
+    if (arg === "--stop") {
+      stop = true;
+      continue;
+    }
     if (arg === "-s" || arg === "--stream") {
       stream = true;
       continue;
@@ -123,6 +129,7 @@ export function parseArgs(argv: string[]): CliArgs {
     json,
     serve,
     daemon,
+    stop,
     stream,
     render,
     renderFinal,
@@ -152,6 +159,7 @@ Options:
       --json                 Print raw JSON response
       --serve                Run opencode serve and exit
   -d, --daemon               Start opencode server in the background
+      --stop                 Stop the background server
   -T, --timeout <seconds>    Response timeout in seconds (default 8)
 
 Examples:
