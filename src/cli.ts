@@ -78,7 +78,14 @@ async function streamResponse(
 
   try {
     while (!done) {
-      const { value, done: rDone } = await reader.read();
+      let value: Uint8Array | undefined;
+      let rDone: boolean;
+      try {
+        ({ value, done: rDone } = await reader.read());
+      } catch (e: any) {
+        if (e?.name === "AbortError") break;
+        throw e;
+      }
       if (rDone) break;
       buffer += decoder.decode(value, { stream: true });
 
@@ -122,6 +129,7 @@ async function streamResponse(
     }
   } finally {
     clearTimeout(timer);
+    controller.abort();
   }
 
   return text;
