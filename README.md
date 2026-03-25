@@ -15,11 +15,16 @@ cd opencode-ask
 bun install
 ```
 
-Link the binary so `ask` is available anywhere:
+Add the `ask` binary to your PATH by symlinking it:
 
 ```sh
-bun link
-# or add bin/ask to your PATH manually
+ln -s "$(pwd)/bin/ask" ~/.local/bin/ask
+```
+
+Make sure `~/.local/bin` is in your `$PATH`. Alternatively use any directory already on your PATH:
+
+```sh
+ln -s "$(pwd)/bin/ask" /usr/local/bin/ask
 ```
 
 ## Usage

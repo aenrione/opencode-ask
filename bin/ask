@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$SCRIPT")"
+
 if command -v bun >/dev/null 2>&1; then
-  exec bun "$(dirname "$0")/../src/cli.ts" "$@"
+  exec bun "$SCRIPT_DIR/../src/cli.ts" "$@"
 fi
 
 echo "bun not found. Install bun from https://bun.sh and retry." >&2
