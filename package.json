@@ -1,0 +1,17 @@
+{
+  "name": "opencode-ask",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "ask": "bin/ask"
+  },
+  "scripts": {
+    "dev": "bun src/cli.ts",
+    "build": "bun build src/cli.ts --outdir dist --target bun",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "typescript": "^5.7.3"
+  }
+}

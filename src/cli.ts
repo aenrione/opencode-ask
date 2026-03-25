@@ -1,0 +1,232 @@
+#!/usr/bin/env bun
+import { parseArgs, printHelp } from "./args.js";
+import { getConfig } from "./config.js";
+import { extractOneLine, extractText } from "./format.js";
+import { createSession, health, message, promptAsync } from "./opencode.js";
+
+async function runServer(host: string, port: number): Promise<number> {
+  const proc = Bun.spawn(["opencode", "serve", "--hostname", host, "--port", String(port)], {
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  return await proc.exited;
+}
+
+function newMessageId(): string {
+  return `msg_cli_${crypto.randomUUID().replace(/-/g, "")}`;
+}
+
+async function streamResponse(
+  url: string,
+  messageID: string,
+  timeoutMs: number
+): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const res = await fetch(`${url}/event`, {
+    headers: { Accept: "text/event-stream" },
+    signal: controller.signal,
+  });
+  if (!res.ok || !res.body) {
+    throw new Error("event stream not available");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let assistantId = "";
+  let text = "";
+  let done = false;
+
+  try {
+    while (!done) {
+      const { value, done: rDone } = await reader.read();
+      if (rDone) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let idx: number;
+      while ((idx = buffer.indexOf("\n\n")) !== -1) {
+        const chunk = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        const line = chunk.split("\n").find((l) => l.startsWith("data:"));
+        if (!line) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+
+        let evt: any;
+        try {
+          evt = JSON.parse(payload);
+        } catch {
+          continue;
+        }
+
+        if (evt.type === "message.updated") {
+          const info = evt.properties?.info;
+          if (info?.role === "assistant" && info?.parentID === messageID) {
+            assistantId = info.id;
+          }
+        }
+
+        if (evt.type === "message.part.updated") {
+          const part = evt.properties?.part;
+          if (assistantId && part?.messageID === assistantId) {
+            if (part.type === "text") {
+              const delta = evt.properties?.delta || part.text || "";
+              text += delta;
+              process.stdout.write(delta);
+            } else if (part.type === "step-finish") {
+              done = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+  } finally {
+    clearTimeout(timer);
+    reader.cancel();
+    controller.abort();
+  }
+
+  return text;
+}
+
+async function renderMarkdown(text: string): Promise<void> {
+  const glow = await Bun.which("glow");
+  if (glow) {
+    const proc = Bun.spawn([glow, "-"], {
+      stdin: "pipe",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    proc.stdin?.write(text);
+    proc.stdin?.end();
+    await proc.exited;
+    return;
+  }
+
+  const bat = await Bun.which("bat");
+  if (bat) {
+    const proc = Bun.spawn([bat, "-l", "markdown", "-p"], {
+      stdin: "pipe",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    proc.stdin?.write(text);
+    proc.stdin?.end();
+    await proc.exited;
+    return;
+  }
+
+  process.stdout.write(text + (text.endsWith("\n") ? "" : "\n"));
+}
+
+async function copyToClipboard(text: string): Promise<void> {
+  const pbcopy = await Bun.which("pbcopy");
+  if (!pbcopy) {
+    throw new Error("pbcopy not found (clipboard copy failed)");
+  }
+  const proc = Bun.spawn([pbcopy], {
+    stdin: "pipe",
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  proc.stdin?.write(text);
+  proc.stdin?.end();
+  await proc.exited;
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help) {
+    printHelp();
+    return;
+  }
+  if (args.serve) {
+    const code = await runServer(getConfig().host, getConfig().port);
+    process.exit(code);
+  }
+  if (!args.prompt) {
+    printHelp();
+    process.exit(1);
+  }
+
+  const config = getConfig();
+  const timeoutMs = args.timeoutMs ?? config.timeoutMs;
+  let systemPrompt = args.noSystem
+    ? ""
+    : args.systemPrompt ?? config.systemPrompt;
+
+  if (args.oneLine) {
+    const suffix = "Return a single command only. No prose, no code fences.";
+    systemPrompt = systemPrompt ? `${systemPrompt}\n${suffix}` : suffix;
+    args.stream = false;
+    args.render = false;
+  }
+
+  if (!(await health(config.url))) {
+    throw new Error("opencode server not running (use --serve to start it)");
+  }
+
+  const sessionID = await createSession(config.url, "cli-ask");
+  if (args.stream) {
+    const msgId = newMessageId();
+    const streamPromise = streamResponse(config.url, msgId, timeoutMs);
+    await promptAsync(config.url, sessionID, msgId, args.prompt, {
+      url: config.url,
+      model: args.model,
+      system: systemPrompt,
+    });
+    const streamed = await streamPromise;
+    if (args.renderFinal) {
+      process.stdout.write("\n");
+      await renderMarkdown(streamed);
+    }
+    if (args.copy) {
+      await copyToClipboard(streamed);
+    }
+    return;
+  }
+
+  const res = await message(config.url, sessionID, args.prompt, {
+    url: config.url,
+    model: args.model,
+    system: systemPrompt,
+  });
+
+  if (args.json) {
+    console.log(JSON.stringify(res, null, 2));
+    return;
+  }
+
+  const text = extractText(res.parts ?? []);
+  if (args.oneLine) {
+    const one = extractOneLine(text);
+    console.log(one);
+    if (args.copy) {
+      await copyToClipboard(one);
+    }
+    return;
+  }
+
+  if (!text) return;
+
+  if (args.render && !args.oneLine) {
+    await renderMarkdown(text);
+    if (args.copy) {
+      await copyToClipboard(text);
+    }
+    return;
+  }
+
+  console.log(text);
+  if (args.copy) {
+    await copyToClipboard(text);
+  }
+}
+
+main().catch((err) => {
+  console.error(String(err.message || err));
+  process.exit(1);
+});
