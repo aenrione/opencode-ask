@@ -6,6 +6,7 @@ export type CliArgs = {
   oneLine: boolean;
   json: boolean;
   serve: boolean;
+  daemon: boolean;
   stream: boolean;
   render: boolean;
   renderFinal: boolean;
@@ -22,9 +23,10 @@ export function parseArgs(argv: string[]): CliArgs {
   let oneLine = false;
   let json = false;
   let serve = false;
+  let daemon = false;
   let stream = true;
   let render = true;
-  let renderFinal = true;
+  let renderFinal = false;
   let copy = false;
   let timeoutMs: number | undefined;
   let help = false;
@@ -86,6 +88,10 @@ export function parseArgs(argv: string[]): CliArgs {
       serve = true;
       continue;
     }
+    if (arg === "-d" || arg === "--daemon") {
+      daemon = true;
+      continue;
+    }
     if (arg === "-s" || arg === "--stream") {
       stream = true;
       continue;
@@ -116,6 +122,7 @@ export function parseArgs(argv: string[]): CliArgs {
     oneLine,
     json,
     serve,
+    daemon,
     stream,
     render,
     renderFinal,
@@ -140,12 +147,12 @@ Options:
   -s, --stream               Stream response text (default)
   -S, --full                 Wait for full answer (no streaming)
   --no-render                Disable markdown rendering
-  --render-final             Render markdown after streaming completes
-  --no-render-final          Disable final markdown render after streaming
+  --render-final             Render full response with markdown after streaming
   -c, --copy                 Copy response to clipboard
       --json                 Print raw JSON response
       --serve                Run opencode serve and exit
-  -T, --timeout <seconds>    Server start timeout (default 8)
+  -d, --daemon               Start opencode server in the background
+  -T, --timeout <seconds>    Response timeout in seconds (default 8)
 
 Examples:
   ask "list directories"

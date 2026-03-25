@@ -12,6 +12,20 @@ async function runServer(host: string, port: number): Promise<number> {
   return await proc.exited;
 }
 
+async function runDaemon(host: string, port: number): Promise<void> {
+  const logPath = `${process.env.HOME}/.local/share/opencode-ask/server.log`;
+  await Bun.$`mkdir -p ${logPath.slice(0, logPath.lastIndexOf("/"))}`;
+  const logFile = Bun.file(logPath);
+  const writer = logFile.writer();
+  const proc = Bun.spawn(["opencode", "serve", "--hostname", host, "--port", String(port)], {
+    stdout: writer,
+    stderr: writer,
+    detached: true,
+  });
+  proc.unref();
+  console.log(`opencode server started (pid ${proc.pid}), logging to ${logPath}`);
+}
+
 function newMessageId(): string {
   return `msg_cli_${crypto.randomUUID().replace(/-/g, "")}`;
 }
@@ -146,6 +160,15 @@ async function main(): Promise<void> {
   if (args.serve) {
     const code = await runServer(getConfig().host, getConfig().port);
     process.exit(code);
+  }
+  if (args.daemon) {
+    const config = getConfig();
+    if (await health(config.url)) {
+      console.log(`opencode server already running at ${config.url}`);
+      return;
+    }
+    await runDaemon(config.host, config.port);
+    return;
   }
   if (!args.prompt) {
     printHelp();

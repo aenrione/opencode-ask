@@ -33,12 +33,18 @@ ln -s "$(pwd)/bin/ask" /usr/local/bin/ask
 ask [options] <prompt>
 ```
 
-opencode must be running as a server before you use `ask`. Start it once and leave it in the background:
+opencode must be running as a server before you use `ask`. Start it as a background daemon:
 
 ```sh
-opencode serve &
-# or
-ask --serve &
+ask --daemon
+```
+
+This starts `opencode serve` detached from your terminal and logs output to `~/.local/share/opencode-ask/server.log`. You only need to do this once per session (or add it to your shell's startup file).
+
+To run it in the foreground instead:
+
+```sh
+ask --serve
 ```
 
 Then query it from any terminal:
@@ -65,7 +71,8 @@ ask -m anthropic/claude-3-5-haiku-latest "explain what a monad is"
 | `--no-render-final` | | Disable final render after streaming |
 | `--copy` | `-c` | Copy the response to the clipboard |
 | `--json` | | Print the raw JSON response |
-| `--serve` | | Start `opencode serve` and exit |
+| `--serve` | | Start `opencode serve` in the foreground |
+| `--daemon` | `-d` | Start `opencode serve` detached in the background |
 | `--timeout <s>` | `-T` | Response timeout in seconds (default: 8) |
 
 ## Examples
