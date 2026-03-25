@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { mkdirSync, openSync } from "fs";
 import { parseArgs, printHelp } from "./args.js";
 import { getConfig } from "./config.js";
 import { extractOneLine, extractText } from "./format.js";
@@ -12,14 +13,14 @@ async function runServer(host: string, port: number): Promise<number> {
   return await proc.exited;
 }
 
-async function runDaemon(host: string, port: number): Promise<void> {
-  const logPath = `${process.env.HOME}/.local/share/opencode-ask/server.log`;
-  await Bun.$`mkdir -p ${logPath.slice(0, logPath.lastIndexOf("/"))}`;
-  const logFile = Bun.file(logPath);
-  const writer = logFile.writer();
+function runDaemon(host: string, port: number): void {
+  const logDir = `${process.env.HOME}/.local/share/opencode-ask`;
+  const logPath = `${logDir}/server.log`;
+  mkdirSync(logDir, { recursive: true });
+  const fd = openSync(logPath, "a");
   const proc = Bun.spawn(["opencode", "serve", "--hostname", host, "--port", String(port)], {
-    stdout: writer,
-    stderr: writer,
+    stdout: fd,
+    stderr: fd,
     detached: true,
   });
   proc.unref();
@@ -99,8 +100,6 @@ async function streamResponse(
     }
   } finally {
     clearTimeout(timer);
-    reader.cancel();
-    controller.abort();
   }
 
   return text;
@@ -167,7 +166,7 @@ async function main(): Promise<void> {
       console.log(`opencode server already running at ${config.url}`);
       return;
     }
-    await runDaemon(config.host, config.port);
+    runDaemon(config.host, config.port);
     return;
   }
   if (!args.prompt) {
